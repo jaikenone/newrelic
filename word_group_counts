@@ -1,0 +1,105 @@
+#!venv/bin/python
+
+import re
+import sys
+import select
+import string
+import json
+
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+
+def work(reader, buffer_size, group_size):
+    counts = {}
+    group = []
+    pstring = ""
+    while True:
+        buffer = reader.read(buffer_size)
+        if len(buffer) < 1:
+            break
+        pstring += buffer
+        words = re.sub(r"[^\w\d\s]+", '', pstring.lower()).split()
+        pstring = words.pop(-1) if buffer[-1] not in string.whitespace and buffer[-1] not in string.punctuation and len(buffer) > 0 else ""
+        for _ in range(len(words)):
+            group.append(words.pop(0))
+            group.pop(0) if len(group) > group_size else None
+            if len(group) == group_size:
+                key = " ".join(group)
+                if key in counts:
+                    counts[key] += 1
+                else:
+                    counts[key] = 1
+    return counts
+
+def print_results(filename, counts, top, json_only):
+    counts = {k: v for k, v in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:top]}
+    if json_only:
+        print(json.dumps(counts))
+    else:
+        print(f"Top {top} results for {filename}")
+        print("---------------------------------")
+        for key, value in counts.items():
+            print(f"{value} - {key}")
+        print("---------------------------------")
+        print("")
+
+if __name__ == '__main__':
+    parser = ArgumentParser(
+        formatter_class=ArgumentDefaultsHelpFormatter,
+        description='Count word groups',
+    )
+
+    parser.add_argument(
+        'files',
+        metavar='FILE',
+        type=str,
+        nargs='*',
+        help='Input files',
+    )
+    parser.add_argument(
+        '-g',
+        '--group-size',
+        type=int,
+        default=3,
+        help='Group size',
+    )
+    parser.add_argument(
+        '-b',
+        '--buffer-size',
+        type=int,
+        default=10240,
+        help='Buffer size',
+    )
+    parser.add_argument(
+        '-t',
+        '--top-count',
+        type=int,
+        default=100,
+        help='Top counts',
+    )
+    parser.add_argument(
+        '-j',
+        '--json-only',
+        action='store_true',
+        help='Bare JSON results',
+    )
+
+    args = parser.parse_args()
+
+    if len(args.files) > 0:
+        for file in args.files:
+            try:
+                with open(file, 'r') as reader:
+                    counts = work(reader, args.buffer_size, args.group_size)
+                    print_results(file, counts, args.top_count, args.json_only)
+
+            except Exception as e:
+                print(e)
+    elif select.select([sys.stdin,],[],[],0.0)[0]:
+        try:
+            counts = work(sys.stdin, args.buffer_size, args.group_size)
+            print_results("stdin", counts, args.top_count, args.json_only)
+
+        except Exception as e:
+            print(e)
+    else:
+        parser.print_help()
