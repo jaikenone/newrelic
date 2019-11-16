@@ -1,7 +1,7 @@
 # NewRelic
 
 ## Code Specs
-See included README.md file.
+See included CC.md file.
 
 ## Requirements
 * Python 3.6+
